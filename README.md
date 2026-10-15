@@ -1,19 +1,29 @@
+<div align="center">
+
 # Vinkius Connect for Go
 
 ### Build AI agents that act for each user.
 
-One SDK for user-specific tools, credentials, permissions, and execution across 11,000+ systems. This Go SDK has zero runtime dependencies: it is built on the standard library.
+One SDK for user-specific tools, credentials, permissions, and execution across **11,000+ systems**. This Go SDK is built on the standard library and has no third-party runtime dependencies.
 
 [![Connectors](https://api.vinkius.com/badges/connectors.svg)](https://vinkius.com)
 [![AI Capabilities](https://api.vinkius.com/badges/capabilities.svg)](https://vinkius.com)
 
 [Documentation](https://vinkius.com/learn/en/connect-sdk) · [Vinkius Cloud](https://cloud.vinkius.com) · [Site](https://vinkius.com)
 
+</div>
+
 ---
+
+<img src="assets/hero.webp" />
+
+<br >
 
 AI applications become more useful when they can take action in the systems their users already work with. But shipping those actions means dealing with integrations, OAuth, credential storage, permissions, API changes, and model-specific tool formats.
 
 **Vinkius Connect handles that connectivity layer.** Your application keeps its users and customer experience. Vinkius resolves each user's connected systems and available capabilities, executes actions on their behalf, and returns the result.
+
+<img src="assets/Connectors_Real_Actions.webp" />
 
 ```text
 Your AI application
@@ -34,22 +44,26 @@ Vinkius Connect
 - **Built for multi-user AI products.** Each user has their own connections and available capabilities.
 - **One consistent interface.** Discover and execute actions without implementing each integration yourself.
 - **Credentials stay out of model context.** Connector secrets are write-only through the documented API and are not returned to application code.
-- **Framework flexibility.** Convert capabilities to the tool formats of OpenAI, Anthropic, Google Gemini, or a neutral JSON-Schema shape.
-- **Managed connectivity.** Vinkius maintains the connectors and their evolving APIs.
+- **Framework flexibility.** Adapt capabilities to OpenAI, Anthropic, Gemini, or a neutral JSON-Schema format.
+- **Managed connectivity.** Vinkius maintains connectors and their evolving APIs.
 - **Your product stays yours.** Use your application's own user IDs and keep the customer relationship and user experience in your product.
 
 ## How it works
 
 1. **Identify the user.** Pass the stable `external_id` assigned by your application backend.
 2. **Discover capabilities.** Vinkius resolves the user's ready connectors and the actions they expose.
-3. **Provide tools to the model.** Convert those capabilities into the tool format your model expects.
+3. **Provide tools to the model.** Convert those capabilities into the tool format expected by your model or framework.
 4. **Execute the selected action.** Send the tool call to Vinkius and return the result to your agent loop.
 
 The `external_id` is an identifier, **not an authentication mechanism**. Only pass an ID that your backend has associated with the currently authenticated user. Never trust a user ID supplied directly by an untrusted client.
 
+<img src="assets/Invisible_Infrastructure_Secure_Connections.webp" />
+
 ## Installation
 
-Go **1.21+** is required. The module is published to GitHub and fetched by its tag:
+Go **1.21+** is required. The module is built on the standard library and has no third-party runtime dependencies.
+
+### Install from the module path
 
 ```bash
 go get github.com/VinkiusForDevs/ai-connect-sdk-go@latest
@@ -58,6 +72,15 @@ go get github.com/VinkiusForDevs/ai-connect-sdk-go@latest
 ## Quick start
 
 Create an AI application in [Vinkius Cloud](https://cloud.vinkius.com), then create an application key. Keep the key on your server. **Never expose it in browser code, mobile clients, or model prompts.**
+
+Set the environment variables:
+
+```bash
+export VINKIUS_APP_ID="vk_app_..."
+export VINKIUS_APP_KEY="vk_app_sk_..."
+```
+
+Then discover and execute a capability:
 
 ```go
 package main
@@ -71,41 +94,41 @@ import (
 )
 
 func main() {
-	// Use the ID of the authenticated user from your own backend.
 	v, err := vk.New(os.Getenv("VINKIUS_APP_ID"), os.Getenv("VINKIUS_APP_KEY"))
 	if err != nil {
 		panic(err)
 	}
 	defer v.Close()
 
+	// Use the ID of the authenticated user from your own backend.
 	user, err := v.User("alice_123")
 	if err != nil {
 		panic(err)
 	}
 
 	// Discover actions available through this user's ready connectors.
-	set, err := user.Capabilities(context.Background(), nil)
+	caps, err := user.Capabilities(context.Background(), nil)
 	if err != nil {
 		panic(err)
 	}
 
 	// Execute one capability by its namespaced name.
-	capability := set.FindCapability("github__create_issue")
-	result, err := capability.Execute(context.Background(), map[string]any{
-		"owner": "acme",
-		"repo":  "product",
-		"title": "Ship it",
-	}, nil)
+	result, err := caps.FindCapability("github__create_issue").Execute(
+		context.Background(),
+		map[string]any{"owner": "acme", "repo": "product", "title": "Ship it"},
+		nil,
+	)
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(result.Text())
 }
 ```
 
-The capability name and input schema depend on the connector and capabilities available to that user. Discover the available capabilities before attempting to execute one.
+The capability name and input schema depend on the connector and capabilities available to that user. Discover available capabilities before attempting to execute one.
 
-## Use capabilities with a model
+## Use capabilities with an AI model
 
 The usual agent loop is straightforward:
 
@@ -115,20 +138,65 @@ The usual agent loop is straightforward:
 4. Execute the returned tool call through Vinkius.
 5. Return the result to the model as part of your agent loop.
 
+### Example: OpenAI Chat Completions
+
 ```go
-caps, _ := user.Capabilities(ctx, nil)
+package main
 
-// OpenAI Chat Completions tools shape.
-tools, err := adapters.ToOpenAITools(caps)
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
 
-// After the model returns a tool call:
-result, err := adapters.RunOpenAIToolCall(ctx, caps, adapters.OpenAIToolCall{
-	Function: adapters.OpenAIFunction{
-		Name:      "github__create_issue",
-		Arguments: `{"owner":"acme","repo":"product","title":"Ship it"}`,
-	},
-})
-fmt.Println(result.Text())
+	vk "github.com/VinkiusForDevs/ai-connect-sdk-go/vinkius"
+	"github.com/VinkiusForDevs/ai-connect-sdk-go/adapters"
+)
+
+func main() {
+	v, err := vk.New(os.Getenv("VINKIUS_APP_ID"), os.Getenv("VINKIUS_APP_KEY"))
+	if err != nil {
+		panic(err)
+	}
+	defer v.Close()
+
+	// Resolve this ID only after authenticating the user in your backend.
+	user, err := v.User("alice_123")
+	if err != nil {
+		panic(err)
+	}
+	caps, err := user.Capabilities(context.Background(), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	tools, err := adapters.ToOpenAITools(caps)
+	if err != nil {
+		panic(err)
+	}
+
+	// Send `tools` to your OpenAI client; when it returns a tool call, execute
+	// the capability through Vinkius instead of calling the system yourself.
+	_ = tools
+	executeOpts := &vk.ExecuteOptions{
+		RequestOptions: vk.RequestOptions{IdempotencyKey: "agent-run-42", Timeout: 30 * time.Second},
+	}
+	result, err := adapters.RunOpenAIToolCall(
+		context.Background(),
+		caps,
+		adapters.OpenAIToolCall{
+			Function: adapters.OpenAIFunction{
+				Name:      "github__create_issue",
+				Arguments: `{"owner":"acme","repo":"product","title":"Ship it"}`,
+			},
+		},
+		executeOpts,
+	)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(result.Text())
+}
 ```
 
 Production agent loops should handle each tool call and send its result back to the model using the provider's expected format.
@@ -140,17 +208,18 @@ Provision a connector for a user, set its credentials, check its status, and ins
 ```go
 github := user.Connector("github")
 
-conn, _ := github.Connect(ctx, nil) // Get or create the connection
-fmt.Println(conn["runtime_url"])
+// Get-or-create the connection, then store credentials for it.
+_, _ = github.Connect(ctx, nil)
+github.Credentials.Set(ctx, map[string]any{"GITHUB_TOKEN": token}, nil)
 
-_ = github.Credentials.Set(ctx, map[string]any{"GITHUB_TOKEN": token}, nil)
-
-status, _ := github.Status(ctx, nil) // not_connected, needs_credentials, ready, or disabled
+status, _ := github.Status(ctx, nil)
+fmt.Println(status) // "not_connected" | "needs_credentials" | "ready" | "disabled"
 
 capabilities, _ := github.Capabilities(ctx, nil)
+fmt.Println(capabilities.Len()) // executable actions for this connector
 ```
 
-The example assumes `v` is already configured and `token` was obtained securely. In a production application, prefer the supported authorization flow for the connector where available, and never ask users to paste secrets into an AI conversation.
+The example assumes `v` and `user` are already configured and `token` was obtained securely. In a production application, prefer the supported authorization flow for the connector where available, and never ask users to paste secrets into an AI conversation.
 
 Credential values are write-only through the documented interface. The credential schema and whether a value is set can be inspected; secret values cannot be read back.
 
@@ -165,11 +234,16 @@ A capability set can be converted to different tool formats. Adapter functions s
 | Google Gemini | `adapters.ToGeminiTools` | `adapters.RunGeminiFunctionCall` |
 | Framework-neutral JSON Schema | `adapters.ToJSONSchemaTools` | `adapters.ExecuteByName` |
 
+Example:
+
 ```go
-openaiTools, _  := adapters.ToOpenAITools(caps)
-anthropicTools, _ := adapters.ToAnthropicTools(caps)
-geminiTools, _  := adapters.ToGeminiTools(caps)
-jsonTools       := adapters.ToJSONSchemaTools(caps)
+caps, _ := user.Capabilities(ctx, nil)
+
+// Convert to the tool format your model expects:
+adapters.ToJSONSchemaTools(caps)   // framework-neutral JSON-Schema
+adapters.ToOpenAITools(caps)       // OpenAI Chat Completions
+adapters.ToAnthropicTools(caps)    // Anthropic Messages
+adapters.ToGeminiTools(caps)       // Google Gemini
 ```
 
 ## Core concepts
@@ -184,7 +258,7 @@ jsonTools       := adapters.ToJSONSchemaTools(caps)
 
 ### Capability discovery behavior
 
-`user.Capabilities` resolves the user's ready connectors in parallel, with concurrency capped at eight. A single unresponsive connector does not necessarily fail the whole batch. Use `OnConnectorError` to observe individual connector failures. If all connectors fail, the first error is raised.
+`user.Capabilities` resolves the user's ready connectors in parallel, with concurrency capped at eight. A single unresponsive connector does not necessarily fail the whole batch. Use `OnConnectorError` to observe individual connector failures. If all connectors fail, the first error is returned.
 
 ## Configuration
 
@@ -192,9 +266,9 @@ jsonTools       := adapters.ToJSONSchemaTools(caps)
 v, _ := vk.New(
 	appID,
 	apiKey,
-	vk.WithTimeout(30*time.Second),  // default
-	vk.WithMaxRetries(2),           // default; retry-safe requests only
-	vk.WithDoer(nil),               // optionally inject a core.Doer
+	vk.WithTimeout(30*time.Second), // default
+	vk.WithMaxRetries(2),          // default; retry-safe requests only
+	vk.WithDoer(nil),              // optionally inject a core.Doer
 	vk.WithUserAgent("acme-ai/1.0"),
 	vk.WithNamespaceCapability(func(connector, name string) string {
 		return connector + "__" + name
@@ -205,12 +279,12 @@ v, _ := vk.New(
 
 - **`appID`** identifies your Vinkius application.
 - **`apiKey`** is a server-side secret. Keep it out of clients and prompts.
-- **`WithTimeout`** sets the per-request deadline.
-- **`WithMaxRetries`** controls retries for retry-safe requests.
-- **`WithDoer`** lets you inject a `core.Doer` transport, useful for tests and custom transports.
-- **`WithUserAgent`** appends your application's identifier to the SDK user agent.
-- **`WithNamespaceCapability`** controls how connector and capability names are combined.
-- **`WithHooks`** configures observability hooks; sensitive headers and bodies are redacted before hooks run.
+- **`vk.WithTimeout`** sets the per-request deadline.
+- **`vk.WithMaxRetries`** controls retries for retry-safe requests.
+- **`vk.WithDoer`** lets you inject a `core.Doer` transport, useful for tests and custom transports.
+- **`vk.WithUserAgent`** appends your application's identifier to the SDK user agent.
+- **`vk.WithNamespaceCapability`** controls how connector and capability names are combined.
+- **`vk.WithHooks`** configures observability hooks; sensitive headers and bodies are redacted before hooks run.
 
 Call `v.Close()` to release the SDK's HTTP client.
 
@@ -225,18 +299,18 @@ For actions that create or modify data in external systems, design your agent lo
 The fluent API has REST equivalents when you need more direct control:
 
 ```go
-connection, _ := v.Users.Connections("alice_123")
-created, _ := connection.Create(ctx, map[string]any{"connector": "github"}, nil)
+conn, _ := v.Users.Connections("alice_123")
+created, _ := conn.Create(ctx, map[string]any{"connector": "github"}, nil)
 
-creds, _ := v.Users.Connections("alice_123")
-_, _ = creds.Credentials(created["id"].(string)).Set(ctx, map[string]any{
+// Store write-only credentials on that connection.
+conn.Credentials(created["id"].(string)).Set(ctx, map[string]any{
 	"credentials": map[string]any{"GITHUB_TOKEN": "..."},
 }, nil)
 
-search, _ := v.Catalog.Search(ctx, "github", nil)
-
-for _, connector := range search {
-	_ = connector
+// Public connector discovery.
+hits, _ := v.Catalog.Search(ctx, "github", nil)
+for _, connector := range hits {
+	fmt.Println(connector["slug"])
 }
 ```
 
@@ -247,15 +321,17 @@ Failures surface as a single `*vk.Error` (an alias of `core.Error`) carrying a s
 - `vk.IsAuthError`, `vk.IsNotFoundError`, `vk.IsValidationError`
 - `vk.IsRateLimitError`, `vk.IsQuotaError`, `vk.IsOverageError`
 - `vk.IsConnectorNotConnectedError`, `vk.IsConnectionError`, `vk.IsProtocolError`
+- `vk.IsConfigError`
 
 ```go
-set, err := user.Capabilities(ctx, nil)
+caps, err := user.Capabilities(ctx, nil)
 if err != nil {
 	if vk.IsRateLimitError(err) {
 		// Inspect RetryAfterMS when present.
-		_ = vk.SDKError(err).RetryAfterMS
+		fmt.Println(vk.SDKError(err).RetryAfterMS)
 	} else {
 		e := vk.SDKError(err)
+		// Useful for logs and support; avoid logging secrets or sensitive payloads.
 		fmt.Println(e.Code, e.Status, e.RequestID)
 	}
 }
